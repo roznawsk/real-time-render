@@ -3,6 +3,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDebug>
+#include <unordered_map>
+#include <string>
 
 
 void Model::readFile(QString fname, bool readNormals, bool readTextures, float scale)
@@ -42,6 +44,7 @@ void Model::count_items()
         else if (source[i].startsWith("f "))
             f_cnt++;
     }
+
     qDebug() << "vertices:" << v_cnt;
     qDebug() << "normals:" << vn_cnt;
     qDebug() << "textures:" << vt_cnt;
@@ -66,7 +69,8 @@ void Model::alloc_items()
 
     stride = 3 + 3*int(read_normals) + 2*int(read_textures);
 
-    vertData = new float[3*stride*f_cnt];
+    vertData = new float[3 * f_cnt * stride];
+    ebo_indices = new GLuint[this -> getEBOIndicesCount()];
 }
 
 
@@ -126,7 +130,9 @@ void Model::parse_items(float scale)
     }
 
    // trojkaty...
+   std::unordered_map<std::string, int> m;
    p = 0;
+   int ebo_p = 0;
    for (int i = 0; i < source.count(); i++)
    {
         if (source[i].startsWith("f "))
@@ -136,34 +142,52 @@ void Model::parse_items(float scale)
 
             for (int j = 0; j < 3; j++)
             {
-                sl2 = sl[j].split("/");
-                while (sl2.count() < 3)
-                    sl2.append("");
+                auto key = sl[j].toStdString();
+                auto it = m.find(key);
+                if (it == m.end()) {
+                    sl2 = sl[j].split("/");
+                    while (sl2.count() < 3)
+                        sl2.append("");
 
-                int vi = sl2[0].toInt() - 1;
+                    int vi = sl2[0].toInt() - 1;
 
-                vertData[stride*p + 0] = v[3*vi + 0];
-                vertData[stride*p + 1] = v[3*vi + 1];
-                vertData[stride*p + 2] = v[3*vi + 2];
+                    vertData[stride*p + 0] = v[3*vi + 0];
+                    vertData[stride*p + 1] = v[3*vi + 1];
+                    vertData[stride*p + 2] = v[3*vi + 2];
 
-                if (read_normals)
-                {
-                    int vni = sl2[2].toInt() - 1;
-                    vertData[stride*p + 3] = vn[3*vni + 0];
-                    vertData[stride*p + 4] = vn[3*vni + 1];
-                    vertData[stride*p + 5] = vn[3*vni + 2];
+                    if (read_normals)
+                    {
+                        int vni = sl2[2].toInt() - 1;
+                        vertData[stride*p + 3] = vn[3*vni + 0];
+                        vertData[stride*p + 4] = vn[3*vni + 1];
+                        vertData[stride*p + 5] = vn[3*vni + 2];
+                    }
+
+                    if (read_textures)
+                    {
+                        int vti = sl2[1].toInt() - 1;
+                        vertData[stride*p + 3*int(read_normals) + 3] = vt[2*vti + 0];
+                        vertData[stride*p + 3*int(read_normals) + 4] = vt[2*vti + 1];
+                    }
+
+                    ebo_indices[ebo_p] = p;
+                    m[key] = p;
+
+                    p++;
+                } else {
+                    ebo_indices[ebo_p] = it->second;
                 }
 
-                if (read_textures)
-                {
-                    int vti = sl2[1].toInt() - 1;
-                    vertData[stride*p + 3*int(read_normals) + 3] = vt[2*vti + 0];
-                    vertData[stride*p + 3*int(read_normals) + 4] = vt[2*vti + 1];
-                }
-                p++;
+                ebo_p++;
             }
         }
    }
+
+   this->deduplicated_vert_data_count = (p - 1) * stride;
+
+   qDebug() << "deduplicated_vert_data_count:" << this->deduplicated_vert_data_count;
+   qDebug() << "p:" << p;
+   qDebug() << "ebo_p:" << ebo_p;
 
    delete [] v;
    delete [] vn;

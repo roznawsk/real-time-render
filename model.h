@@ -1,8 +1,14 @@
 #ifndef MODEL_H
 #define MODEL_H
 
+// #include "OpenGL/gltypes.h"
 #include <QString>
 #include <QStringList>
+
+#include <QOpenGLWidget>
+#include <QOpenGLFunctions_1_0>
+#include <QOpenGLFunctions_4_5_Core>
+#include <QMatrix4x4>
 
 class Model
 {
@@ -13,10 +19,31 @@ public:
 
     void readFile(QString fname, bool readNormals, bool readTextures, float scale);
 
-    float *getVertData() { return vertData; }
+    float *getVertData() {
+        return vertData;
+    }
+
     int getVertDataStride() { return stride; }
-    int getVertDataCount() { return f_cnt; }
-    int getVertDataSize() { return 3*f_cnt*stride*sizeof(float); }
+
+    int getVertDataCount() {
+        return deduplicated_vert_data_count;
+    }
+
+    int getVertDataSize() {
+        return getVertDataCount() * sizeof(float);
+    }
+
+    GLuint* getEBOIndices() {
+        return ebo_indices;
+    }
+
+    int getEBOIndicesCount() {
+        return 3 * f_cnt;
+    }
+
+    int getEBOIndicesSize() {
+        return getEBOIndicesCount() * sizeof(GLuint);
+    }
 
 private:
     QStringList source;
@@ -24,6 +51,9 @@ private:
     bool read_normals, read_textures;
     float *vertData;
     float *v, *vn, *vt;
+
+    GLuint* ebo_indices;
+    int deduplicated_vert_data_count;
 
     void count_items();
     void alloc_items();

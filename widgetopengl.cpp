@@ -91,9 +91,9 @@ void WidgetOpenGL::initializeGL()
         // CZ 2. Wczytanie modelu
         ////////////////////////////////////////////////////////////////
 
-        Model model;
+        // model.readFile("../../models-obj/dragon.obj", true, false, 0.4);
         model.readFile("../Modele/rcube.obj", true, false, 0.4);
-        triangles_cnt = model.getVertDataCount();
+        triangles_cnt = model.getEBOIndicesCount() / 3;
 
 
         ////////////////////////////////////////////////////////////////
@@ -105,6 +105,12 @@ void WidgetOpenGL::initializeGL()
         glGenBuffers(1, &VBO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, model.getVertDataSize(), model.getVertData(), GL_STATIC_DRAW);
+
+        // EBO!
+        GLuint EBO;
+        glGenBuffers(1, &EBO);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, model.getEBOIndicesSize(), model.getEBOIndices(), GL_STATIC_DRAW);
 
         // tworzymy VAO
         glGenVertexArrays(1, &VAO);
@@ -127,6 +133,9 @@ void WidgetOpenGL::initializeGL()
         // zapodajemy VBO
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
+        // EBO!
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+
         // odczepiamy VAO, aby sie nic juz nie zmienilo
         glBindVertexArray(0);
 
@@ -135,7 +144,7 @@ void WidgetOpenGL::initializeGL()
         // CZ 4. Inne inicjalizacje OpenGL
         ////////////////////////////////////////////////////////////////
 
-        glClearColor(0, 0.3, 0, 1);
+        glClearColor(0.1, 0.1, 0.1, 1);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -208,7 +217,7 @@ void WidgetOpenGL::paintGL()
             QMatrix3x3 norm_matrix = invertTranspose(m_matrix); // !!!
             glUniformMatrix3fv(attr_n, 1, GL_FALSE, norm_matrix.data());
 
-            glDrawArrays(GL_TRIANGLES, 0, 3*triangles_cnt);
+            glDrawElements(GL_TRIANGLES,  model.getEBOIndicesCount(), GL_UNSIGNED_INT, (void*) (0));
         }
 
         // odczepiamy VAO

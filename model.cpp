@@ -3,7 +3,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDebug>
-
+#include <unordered_map>
+#include <string>
 
 void Model::readFile(QString fname, bool readNormals, bool readTextures, float scale)
 {
@@ -27,7 +28,6 @@ void Model::readFile(QString fname, bool readNormals, bool readTextures, float s
     parse_items(scale);
 }
 
-
 void Model::count_items()
 {
     v_cnt = vn_cnt = vt_cnt = f_cnt = 0;
@@ -42,33 +42,33 @@ void Model::count_items()
         else if (source[i].startsWith("f "))
             f_cnt++;
     }
+
     qDebug() << "vertices:" << v_cnt;
     qDebug() << "normals:" << vn_cnt;
     qDebug() << "textures:" << vt_cnt;
     qDebug() << "faces:" << f_cnt;
 }
 
-
 void Model::alloc_items()
 {
-    v = new float[3*v_cnt];
-    memset(v, 0, sizeof(float)*3*v_cnt);
+    v = new float[3 * v_cnt];
+    memset(v, 0, sizeof(float) * 3 * v_cnt);
     if (read_normals)
     {
-      vn = new float[3*vn_cnt]();
-      memset(vn, 0, sizeof(float)*3*vn_cnt);
+        vn = new float[3 * vn_cnt]();
+        memset(vn, 0, sizeof(float) * 3 * vn_cnt);
     }
     if (read_textures)
     {
-      vt = new float[2*vt_cnt]();
-      memset(vt, 0, sizeof(float)*2*vt_cnt);
+        vt = new float[2 * vt_cnt]();
+        memset(vt, 0, sizeof(float) * 2 * vt_cnt);
     }
 
-    stride = 3 + 3*int(read_normals) + 2*int(read_textures);
+    stride = 3 + 3 * int(read_normals) + 2 * int(read_textures);
 
-    vertData = new float[3*stride*f_cnt];
+    vertData = new float[3 * f_cnt * stride];
+    ebo_indices = new GLuint[this->getEBOIndicesCount()];
 }
-
 
 void Model::parse_items(float scale)
 {
@@ -83,9 +83,9 @@ void Model::parse_items(float scale)
         {
             l = source[i].mid(2).trimmed();
             sl = l.split(" ");
-            v[3*p + 0] = sl[0].toFloat()*scale;
-            v[3*p + 1] = sl[1].toFloat()*scale;
-            v[3*p + 2] = sl[2].toFloat()*scale;
+            v[3 * p + 0] = sl[0].toFloat() * scale;
+            v[3 * p + 1] = sl[1].toFloat() * scale;
+            v[3 * p + 2] = sl[2].toFloat() * scale;
             p++;
         }
     }
@@ -100,9 +100,9 @@ void Model::parse_items(float scale)
             {
                 l = source[i].mid(3).trimmed();
                 sl = l.split(" ");
-                vn[3*p + 0] = sl[0].toFloat();
-                vn[3*p + 1] = sl[1].toFloat();
-                vn[3*p + 2] = sl[2].toFloat();
+                vn[3 * p + 0] = sl[0].toFloat();
+                vn[3 * p + 1] = sl[1].toFloat();
+                vn[3 * p + 2] = sl[2].toFloat();
                 p++;
             }
         }
@@ -118,17 +118,19 @@ void Model::parse_items(float scale)
             {
                 l = source[i].mid(3).trimmed();
                 sl = l.split(" ");
-                vt[2*p + 0] = sl[0].toFloat();
-                vt[2*p + 1] = sl[1].toFloat();
+                vt[2 * p + 0] = sl[0].toFloat();
+                vt[2 * p + 1] = sl[1].toFloat();
                 p++;
             }
         }
     }
 
-   // trojkaty...
-   p = 0;
-   for (int i = 0; i < source.count(); i++)
-   {
+    // trojkaty...
+    std::unordered_map<std::string, int> m;
+    p = 0;
+    int ebo_p = 0;
+    for (int i = 0; i < source.count(); i++)
+    {
         if (source[i].startsWith("f "))
         {
             l = source[i].mid(2).trimmed();
@@ -136,40 +138,57 @@ void Model::parse_items(float scale)
 
             for (int j = 0; j < 3; j++)
             {
-                sl2 = sl[j].split("/");
-                while (sl2.count() < 3)
-                    sl2.append("");
-
-                int vi = sl2[0].toInt() - 1;
-
-                vertData[stride*p + 0] = v[3*vi + 0];
-                vertData[stride*p + 1] = v[3*vi + 1];
-                vertData[stride*p + 2] = v[3*vi + 2];
-
-                if (read_normals)
+                auto key = sl[j].toStdString();
+                auto it = m.find(key);
+                if (it == m.end())
                 {
-                    int vni = sl2[2].toInt() - 1;
-                    vertData[stride*p + 3] = vn[3*vni + 0];
-                    vertData[stride*p + 4] = vn[3*vni + 1];
-                    vertData[stride*p + 5] = vn[3*vni + 2];
+                    sl2 = sl[j].split("/");
+                    while (sl2.count() < 3)
+                        sl2.append("");
+
+                    int vi = sl2[0].toInt() - 1;
+
+                    vertData[stride * p + 0] = v[3 * vi + 0];
+                    vertData[stride * p + 1] = v[3 * vi + 1];
+                    vertData[stride * p + 2] = v[3 * vi + 2];
+
+                    if (read_normals)
+                    {
+                        int vni = sl2[2].toInt() - 1;
+                        vertData[stride * p + 3] = vn[3 * vni + 0];
+                        vertData[stride * p + 4] = vn[3 * vni + 1];
+                        vertData[stride * p + 5] = vn[3 * vni + 2];
+                    }
+
+                    if (read_textures)
+                    {
+                        int vti = sl2[1].toInt() - 1;
+                        vertData[stride * p + 3 * int(read_normals) + 3] = vt[2 * vti + 0];
+                        vertData[stride * p + 3 * int(read_normals) + 4] = vt[2 * vti + 1];
+                    }
+
+                    ebo_indices[ebo_p] = p;
+                    m[key] = p;
+
+                    p++;
+                }
+                else
+                {
+                    ebo_indices[ebo_p] = it->second;
                 }
 
-                if (read_textures)
-                {
-                    int vti = sl2[1].toInt() - 1;
-                    vertData[stride*p + 3*int(read_normals) + 3] = vt[2*vti + 0];
-                    vertData[stride*p + 3*int(read_normals) + 4] = vt[2*vti + 1];
-                }
-                p++;
+                ebo_p++;
             }
         }
-   }
+    }
 
-   delete [] v;
-   delete [] vn;
-   delete [] vt;
+    this->deduplicated_vert_data_count = (p - 1) * stride;
 
-   qDebug() << "Ok, model wczytany.";
+    delete[] v;
+    delete[] vn;
+    delete[] vt;
+
+    qDebug() << "Ok, model wczytany.";
 }
 
 void Model::print()
@@ -178,9 +197,8 @@ void Model::print()
     for (int i = 0; i < f_cnt; i++)
     {
         QString s = "";
-        for (int j = 0; j < stride*3; j++)
-            s += (j ? ", ": "") + QString::number(vertData[i*stride + j]);
+        for (int j = 0; j < stride * 3; j++)
+            s += (j ? ", " : "") + QString::number(vertData[i * stride + j]);
         qDebug() << s;
     }
 }
-
